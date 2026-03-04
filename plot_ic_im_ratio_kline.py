@@ -353,6 +353,8 @@ def make_tradingview_html(df: pd.DataFrame, html_path: Path) -> None:
       upColor: "#d1495b",
       downColor: "#2a9d8f",
       borderVisible: true,
+      borderUpColor: "#d1495b",
+      borderDownColor: "#2a9d8f",
       wickUpColor: "#d1495b",
       wickDownColor: "#2a9d8f"
     });
