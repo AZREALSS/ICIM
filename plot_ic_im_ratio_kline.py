@@ -29,6 +29,9 @@ def load_ohlc(path: Path, prefix: str) -> pd.DataFrame:
 
 
 def build_ratio_ohlc(ic: pd.DataFrame, im: pd.DataFrame) -> pd.DataFrame:
+    # Start plotting window from IM's first available date.
+    im_start = im["time"].min()
+    ic = ic[ic["time"] >= im_start].copy()
     merged = ic.merge(im, on="time", how="inner", validate="one_to_one")
 
     out = pd.DataFrame({"time": merged["time"]})
@@ -43,8 +46,8 @@ def build_ratio_ohlc(ic: pd.DataFrame, im: pd.DataFrame) -> pd.DataFrame:
 
     out = out.replace([float("inf"), float("-inf")], pd.NA).dropna()
     out = out.sort_values("time").reset_index(drop=True)
+    out["ma3"] = out["close"].rolling(3).mean()
     out["ma5"] = out["close"].rolling(5).mean()
-    out["ma20"] = out["close"].rolling(20).mean()
     return out
 
 
@@ -59,18 +62,18 @@ def make_plotly_html(df: pd.DataFrame, html_path: Path) -> None:
         "high": to_float_list(df["high"]),
         "low": to_float_list(df["low"]),
         "close": to_float_list(df["close"]),
+        "ma3": to_float_list(df["ma3"]),
         "ma5": to_float_list(df["ma5"]),
-        "ma20": to_float_list(df["ma20"]),
     }
     latest_date = df["time"].iloc[-1].strftime("%Y-%m-%d")
     latest_close = df["close"].iloc[-1]
 
     html = """<!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>IC/IM Ratio Kline</title>
+  <title>IC/IM 比值K线图</title>
   <script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
   <style>
     body {
@@ -100,7 +103,7 @@ def make_plotly_html(df: pd.DataFrame, html_path: Path) -> None:
 </head>
 <body>
   <div class="wrap">
-    <p class="meta">Latest close(IC/IM): <b>__LATEST_CLOSE__</b> (__LATEST_DATE__)</p>
+    <p class="meta">最新收盘(IC/IM)：<b>__LATEST_CLOSE__</b>（__LATEST_DATE__）</p>
     <div id="chart"></div>
   </div>
   <script>
@@ -113,9 +116,17 @@ def make_plotly_html(df: pd.DataFrame, html_path: Path) -> None:
       low: d.low,
       close: d.close,
       name: "IC/IM",
-      increasing: {line: {color: "#2a9d8f"}, fillcolor: "#2a9d8f"},
-      decreasing: {line: {color: "#d1495b"}, fillcolor: "#d1495b"},
+      increasing: {line: {color: "#d1495b"}, fillcolor: "#d1495b"},
+      decreasing: {line: {color: "#2a9d8f"}, fillcolor: "#2a9d8f"},
       whiskerwidth: 0.35
+    };
+    const ma3 = {
+      type: "scatter",
+      mode: "lines",
+      x: d.dates,
+      y: d.ma3,
+      name: "MA3",
+      line: {color: "#f59e0b", width: 1.2}
     };
     const ma5 = {
       type: "scatter",
@@ -125,17 +136,9 @@ def make_plotly_html(df: pd.DataFrame, html_path: Path) -> None:
       name: "MA5",
       line: {color: "#1d4ed8", width: 1.2}
     };
-    const ma20 = {
-      type: "scatter",
-      mode: "lines",
-      x: d.dates,
-      y: d.ma20,
-      name: "MA20",
-      line: {color: "#f59e0b", width: 1.2}
-    };
 
     const layout = {
-      title: "IC/IM Ratio Kline (Daily)",
+      title: "IC/IM 比值K线图（日线）",
       template: "plotly_white",
       hovermode: "x unified",
       margin: {l: 64, r: 24, t: 56, b: 48},
@@ -144,18 +147,18 @@ def make_plotly_html(df: pd.DataFrame, html_path: Path) -> None:
         rangeslider: {visible: true},
         rangeselector: {
           buttons: [
-            {count: 1, label: "1M", step: "month", stepmode: "backward"},
-            {count: 3, label: "3M", step: "month", stepmode: "backward"},
-            {count: 6, label: "6M", step: "month", stepmode: "backward"},
-            {count: 1, label: "1Y", step: "year", stepmode: "backward"},
-            {step: "all", label: "All"}
+            {count: 1, label: "1月", step: "month", stepmode: "backward"},
+            {count: 3, label: "3月", step: "month", stepmode: "backward"},
+            {count: 6, label: "6月", step: "month", stepmode: "backward"},
+            {count: 1, label: "1年", step: "year", stepmode: "backward"},
+            {step: "all", label: "全部"}
           ]
         }
       },
-      yaxis: {title: "Ratio"}
+      yaxis: {title: "比值"}
     };
 
-    Plotly.newPlot("chart", [candle, ma5, ma20], layout, {
+    Plotly.newPlot("chart", [candle, ma3, ma5], layout, {
       responsive: true,
       displaylogo: false,
       modeBarButtonsToRemove: ["select2d", "lasso2d"]
@@ -182,14 +185,14 @@ def make_tradingview_html(df: pd.DataFrame, html_path: Path) -> None:
         }
         for t, o, h, l, c in zip(df["time"], df["open"], df["high"], df["low"], df["close"])
     ]
+    ma3_data = [
+        {"time": t.strftime("%Y-%m-%d"), "value": float(v)}
+        for t, v in zip(df["time"], df["ma3"])
+        if not pd.isna(v)
+    ]
     ma5_data = [
         {"time": t.strftime("%Y-%m-%d"), "value": float(v)}
         for t, v in zip(df["time"], df["ma5"])
-        if not pd.isna(v)
-    ]
-    ma20_data = [
-        {"time": t.strftime("%Y-%m-%d"), "value": float(v)}
-        for t, v in zip(df["time"], df["ma20"])
         if not pd.isna(v)
     ]
 
@@ -198,16 +201,16 @@ def make_tradingview_html(df: pd.DataFrame, html_path: Path) -> None:
 
     payload = {
         "candles": candle_data,
+        "ma3": ma3_data,
         "ma5": ma5_data,
-        "ma20": ma20_data,
     }
 
     html = """<!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>IC/IM Ratio Kline (TradingView)</title>
+  <title>IC/IM 比值K线图（TradingView）</title>
   <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
   <style>
     :root {
@@ -215,10 +218,10 @@ def make_tradingview_html(df: pd.DataFrame, html_path: Path) -> None:
       --fg: #101827;
       --card: #ffffff;
       --line: #dbe2ea;
-      --up: #2a9d8f;
-      --down: #d1495b;
+      --up: #d1495b;
+      --down: #2a9d8f;
+      --ma3: #f59e0b;
       --ma5: #1d4ed8;
-      --ma20: #f59e0b;
     }
     * { box-sizing: border-box; }
     body {
@@ -270,6 +273,28 @@ def make_tradingview_html(df: pd.DataFrame, html_path: Path) -> None:
     .toolbar button:hover {
       background: #eef4fb;
     }
+    .detail {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--line);
+      font-size: 13px;
+      color: #1f2937;
+      background: #fcfdff;
+    }
+    .detail .label {
+      color: #6b7280;
+      margin-right: 4px;
+    }
+    .detail .up {
+      color: #d1495b;
+      font-weight: 600;
+    }
+    .detail .down {
+      color: #2a9d8f;
+      font-weight: 600;
+    }
     #chart {
       width: 100%;
       height: min(78vh, 840px);
@@ -278,15 +303,16 @@ def make_tradingview_html(df: pd.DataFrame, html_path: Path) -> None:
 </head>
 <body>
   <div class="wrap">
-    <h1 class="title">IC/IM Ratio Kline (TradingView Lightweight Charts)</h1>
-    <p class="meta">Latest close(IC/IM): <b>__LATEST_CLOSE__</b> (__LATEST_DATE__)</p>
+    <h1 class="title">IC/IM 比值K线图（TradingView Lightweight Charts）</h1>
+    <p class="meta">最新收盘(IC/IM)：<b>__LATEST_CLOSE__</b>（__LATEST_DATE__）</p>
     <div class="card">
       <div class="toolbar">
-        <button data-range="60">3M</button>
-        <button data-range="120">6M</button>
-        <button data-range="250">1Y</button>
-        <button data-range="all">All</button>
+        <button data-range="60">近3月</button>
+        <button data-range="120">近6月</button>
+        <button data-range="250">近1年</button>
+        <button data-range="all">全部</button>
       </div>
+      <div id="k-detail" class="detail"></div>
       <div id="chart"></div>
     </div>
   </div>
@@ -294,6 +320,7 @@ def make_tradingview_html(df: pd.DataFrame, html_path: Path) -> None:
   <script>
     const payload = __PAYLOAD_JSON__;
     const chartEl = document.getElementById("chart");
+    const detailEl = document.getElementById("k-detail");
     const chart = LightweightCharts.createChart(chartEl, {
       width: chartEl.clientWidth,
       height: chartEl.clientHeight,
@@ -323,11 +350,18 @@ def make_tradingview_html(df: pd.DataFrame, html_path: Path) -> None:
     });
 
     const candleSeries = chart.addCandlestickSeries({
-      upColor: "#2a9d8f",
-      downColor: "#d1495b",
+      upColor: "#d1495b",
+      downColor: "#2a9d8f",
       borderVisible: true,
-      wickUpColor: "#2a9d8f",
-      wickDownColor: "#d1495b"
+      wickUpColor: "#d1495b",
+      wickDownColor: "#2a9d8f"
+    });
+
+    const ma3Series = chart.addLineSeries({
+      color: "#f59e0b",
+      lineWidth: 1.2,
+      priceLineVisible: false,
+      crosshairMarkerVisible: false
     });
 
     const ma5Series = chart.addLineSeries({
@@ -337,17 +371,57 @@ def make_tradingview_html(df: pd.DataFrame, html_path: Path) -> None:
       crosshairMarkerVisible: false
     });
 
-    const ma20Series = chart.addLineSeries({
-      color: "#f59e0b",
-      lineWidth: 1.2,
-      priceLineVisible: false,
-      crosshairMarkerVisible: false
-    });
-
     candleSeries.setData(payload.candles);
+    ma3Series.setData(payload.ma3);
     ma5Series.setData(payload.ma5);
-    ma20Series.setData(payload.ma20);
     chart.timeScale().fitContent();
+
+    function formatTime(time) {
+      if (typeof time === "string") return time;
+      if (typeof time === "number") return new Date(time * 1000).toISOString().slice(0, 10);
+      if (time && typeof time === "object" && "year" in time) {
+        const y = String(time.year).padStart(4, "0");
+        const m = String(time.month).padStart(2, "0");
+        const d = String(time.day).padStart(2, "0");
+        return `${y}-${m}-${d}`;
+      }
+      return "";
+    }
+
+    function fmt(num) {
+      return Number(num).toFixed(6);
+    }
+
+    function setDetail(bar, timeValue) {
+      if (!bar) return;
+      const dateText = formatTime(timeValue || bar.time);
+      const change = bar.close - bar.open;
+      const changePct = bar.open ? (change / bar.open) * 100 : 0;
+      const amplitudePct = bar.open ? ((bar.high - bar.low) / bar.open) * 100 : 0;
+      const cls = change >= 0 ? "up" : "down";
+      const sign = change >= 0 ? "+" : "";
+      detailEl.innerHTML =
+        `<span><span class="label">日期</span>${dateText}</span>` +
+        `<span><span class="label">开</span>${fmt(bar.open)}</span>` +
+        `<span><span class="label">高</span>${fmt(bar.high)}</span>` +
+        `<span><span class="label">低</span>${fmt(bar.low)}</span>` +
+        `<span><span class="label">收</span>${fmt(bar.close)}</span>` +
+        `<span class="${cls}"><span class="label">涨跌</span>${sign}${fmt(change)}</span>` +
+        `<span class="${cls}"><span class="label">涨跌幅</span>${sign}${changePct.toFixed(2)}%</span>` +
+        `<span><span class="label">振幅</span>${amplitudePct.toFixed(2)}%</span>`;
+    }
+
+    const latestBar = payload.candles[payload.candles.length - 1];
+    setDetail(latestBar, latestBar ? latestBar.time : "");
+
+    chart.subscribeCrosshairMove((param) => {
+      const point = param && param.seriesData ? param.seriesData.get(candleSeries) : null;
+      if (point && point.open != null && point.high != null && point.low != null && point.close != null) {
+        setDetail(point, param.time);
+      } else {
+        setDetail(latestBar, latestBar ? latestBar.time : "");
+      }
+    });
 
     const rangeButtons = Array.from(document.querySelectorAll("button[data-range]"));
     rangeButtons.forEach((btn) => {
