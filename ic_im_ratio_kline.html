@@ -11,8 +11,8 @@
       --fg: #101827;
       --card: #ffffff;
       --line: #dbe2ea;
-      --up: #2a9d8f;
-      --down: #d1495b;
+      --up: #d1495b;
+      --down: #2a9d8f;
       --ma5: #1d4ed8;
       --ma20: #f59e0b;
     }
@@ -81,11 +81,11 @@
       margin-right: 4px;
     }
     .detail .up {
-      color: #2a9d8f;
+      color: #d1495b;
       font-weight: 600;
     }
     .detail .down {
-      color: #d1495b;
+      color: #2a9d8f;
       font-weight: 600;
     }
     #chart {
@@ -143,11 +143,11 @@
     });
 
     const candleSeries = chart.addCandlestickSeries({
-      upColor: "#2a9d8f",
-      downColor: "#d1495b",
+      upColor: "#d1495b",
+      downColor: "#2a9d8f",
       borderVisible: true,
-      wickUpColor: "#2a9d8f",
-      wickDownColor: "#d1495b"
+      wickUpColor: "#d1495b",
+      wickDownColor: "#2a9d8f"
     });
 
     const ma5Series = chart.addLineSeries({
